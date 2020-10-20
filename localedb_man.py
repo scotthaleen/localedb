@@ -685,14 +685,13 @@ class ClinicalSchema(Schema):
 
     def load_clinical(self):
         """
+        Loads Clinical data to the database.
         """
         start = time.perf_counter()
         req = urllib.request.urlopen('https://raw.githubusercontent.com/jataware/clinical_data/master/clinical_data.txt')
         df = pd.read_csv(io.TextIOWrapper(io.BytesIO(req.read())), delimiter='\t')
-        df.to_sql('clinical_data', con=self.engine, schema=self.dbi.pg_schema_clinical, index=False, if_exists='append')
-
         try:
-            pass
+            df.to_sql('clinical_data', con=self.engine, schema=self.dbi.pg_schema_clinical, index=False, if_exists='append')
         except IntegrityError as e:
             assert isinstance(e.orig, UniqueViolation)
             print("Clinical data is already loaded in LocaleDB.")
