@@ -42,7 +42,7 @@ class DBI(object):
     """Database interface.
     """
 
-    def __init__(self, pg_host, pg_port, pg_usr, pg_pwd, pg_db, pg_schema_dis, pg_schema_geo, pg_schema_main, pg_schema_pop, pg_schema_vax, cursor_factory=psycopg2.extras.NamedTupleCursor):
+    def __init__(self, pg_host, pg_port, pg_usr, pg_pwd, pg_db, pg_schema_dis, pg_schema_geo, pg_schema_main, pg_schema_pop, pg_schema_vax, pg_schema_clinical, cursor_factory=psycopg2.extras.NamedTupleCursor):
         self.pg_host        = pg_host
         self.pg_port        = pg_port
         self.pg_usr         = pg_usr
@@ -53,7 +53,7 @@ class DBI(object):
         self.pg_schema_main = pg_schema_main
         self.pg_schema_pop  = pg_schema_pop
         self.pg_schema_vax  = pg_schema_vax
-
+        self.pg_schema_clinical  = pg_schema_clinical
         self.conn = psycopg2.connect(host=self.pg_host, port=self.pg_port, user=self.pg_usr, password=self.pg_pwd, database=self.pg_db, cursor_factory=cursor_factory)
 
     def __del__(self):
@@ -679,11 +679,41 @@ class VaxSchema(Schema):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+class ClinicalSchema(Schema):
+    """
+    """
+
+    def load_clinical(self):
+        """
+        """
+        start = time.perf_counter()
+        req = urllib.request.urlopen('https://raw.githubusercontent.com/jataware/clinical_data/master/clinical_data.txt')
+        df = pd.read_csv(io.TextIOWrapper(io.BytesIO(req.read())), delimiter='\t')
+        df.to_sql('clinical_data', con=self.engine, schema=self.dbi.pg_schema_clinical, index=False, if_exists='append')
+
+        try:
+            pass
+        except IntegrityError as e:
+            assert isinstance(e.orig, UniqueViolation)
+            print("Clinical data is already loaded in LocaleDB.")
+
+        print(f' done ({time.perf_counter() - start:.0f} s)', flush=True)
+
+    def test(self):
+        with self.conn.dbi.cursor() as c:
+            c.execute(f'SELECT COUNT(*) AS n FROM {self.dbi.pg_schema_clinical}.clinical_data;')
+            print(c.fetchone().n)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 class LocaleDB(object):
-    def __init__(self, pg_host, pg_port, pg_usr, pg_pwd, pg_db, pg_schema_dis, pg_schema_geo, pg_schema_main, pg_schema_pop, pg_schema_vax, dpath_log, dpath_rt):
-        self.dbi = DBI(pg_host, pg_port, pg_usr, pg_pwd, pg_db, pg_schema_dis, pg_schema_geo, pg_schema_main, pg_schema_pop, pg_schema_vax)
+    def __init__(self, pg_host, pg_port, pg_usr, pg_pwd, pg_db, pg_schema_dis, pg_schema_geo, pg_schema_main, pg_schema_pop, pg_schema_vax, pg_schema_clinical, dpath_log, dpath_rt):
+        self.dbi = DBI(pg_host, pg_port, pg_usr, pg_pwd, pg_db, pg_schema_dis, pg_schema_geo, pg_schema_main, pg_schema_pop, pg_schema_vax, pg_schema_clinical)
         self.fsi = FSI(dpath_log, dpath_rt)
         self.engine = create_engine(f'postgresql://{pg_usr}:{pg_pwd}@{pg_host}:{pg_port}/{pg_db}')
+
+    def get_clinical(self):
+        return ClinicalSchema(self.dbi, self.fsi, self.engine)
 
     def get_dis(self):
         return DiseaseSchema(self.dbi, self.fsi)
@@ -704,21 +734,26 @@ if __name__ == '__main__':
     # print(len(sys.argv[1:]))
     # sys.exit(0)
 
-    if len(sys.argv[1:]) < 13:
-        print(f'Incorrect number of arguments; at least 13 are required.')
+    min_arg_length = 14
+
+    if len(sys.argv[1:]) < min_arg_length:
+        print(f'Incorrect number of arguments; at least ${min_arg_length} are required.')
         sys.exit(1)
 
-    if sys.argv[13] == 'load-dis':
-        req_argn(14)
-        LocaleDB(*sys.argv[1:13]).get_dis().load_disease(sys.argv[14])
-    elif sys.argv[13] == 'load-main':
-        LocaleDB(*sys.argv[1:13]).get_main().load_locales()
-    elif sys.argv[13] == 'load-pop-state':
-        req_argn(14)
-        LocaleDB(*sys.argv[1:13]).get_pop().load_state(sys.argv[14])
-    elif sys.argv[13] == 'load-vax':
-        req_argn(13)
-        LocaleDB(*sys.argv[1:13]).get_vax().load_vax()
+    if sys.argv[min_arg_length] == 'load-dis':
+        req_argn(min_arg_length + 1)
+        LocaleDB(*sys.argv[1:min_arg_length]).get_dis().load_disease(sys.argv[min_arg_length + 1])
+    elif sys.argv[min_arg_length] == 'load-main':
+        LocaleDB(*sys.argv[1:min_arg_length]).get_main().load_locales()
+    elif sys.argv[min_arg_length] == 'load-pop-state':
+        req_argn(min_arg_length + 1)
+        LocaleDB(*sys.argv[1:min_arg_length]).get_pop().load_state(sys.argv[min_arg_length + 1])
+    elif sys.argv[min_arg_length] == 'load-vax':
+        req_argn(min_arg_length)
+        LocaleDB(*sys.argv[1:min_arg_length]).get_vax().load_vax()
+    elif sys.argv[min_arg_length] == 'load-clinical':
+        req_argn(min_arg_length)
+        LocaleDB(*sys.argv[1:min_arg_length]).get_clinical().load_clinical()
     else:
-        print(f'Unknown command: {sys.argv[13]}')
+        print(f'Unknown command: {sys.argv[min_arg_length]}')
         sys.exit(1)

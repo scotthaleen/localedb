@@ -1,0 +1,22 @@
+SET client_min_messages TO WARNING;
+BEGIN;
+
+DROP SCHEMA IF EXISTS $PG_SCHEMA_CLINICAL CASCADE;
+CREATE SCHEMA $PG_SCHEMA_CLINICAL;
+
+CREATE SEQUENCE  $PG_SCHEMA_CLINICAL.id_seq;
+
+CREATE TABLE $PG_SCHEMA_CLINICAL.clinical_data (
+id           INTEGER NOT NULL DEFAULT nextval('$PG_SCHEMA_CLINICAL.id_seq'),
+disease      VARCHAR(32) NOT NULL,
+url          TEXT NOT NULL,
+doi          VARCHAR(255) NOT NULL,
+year         INT4,
+dt           DATE,
+variable     VARCHAR(32),
+estimate     DECIMAL(8,2),
+sentence     TEXT NOT NULL
+);
+
+
+COMMIT;
